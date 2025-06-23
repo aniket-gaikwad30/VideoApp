@@ -1,103 +1,124 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useSession } from "next-auth/react";
 import Image from "next/image";
+import { IVideo } from "@/models/Video";
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [videos, setVideos] = useState<IVideo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [modalVideo, setModalVideo] = useState<IVideo | null>(null);
+  const { data: session } = useSession();
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const fetchVideos = () => {
+    setLoading(true);
+    fetch("/api/video")
+      .then((res) => res.json())
+      .then((data) => {
+        setVideos(Array.isArray(data) ? data : []);
+        setLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    fetchVideos();
+  }, []);
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this video?")) return;
+    try {
+      const res = await fetch(`/api/video?id=${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "Failed to delete video");
+        return;
+      }
+      fetchVideos();
+    } catch {
+      alert("Failed to delete video");
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-gray-100 py-8 px-4">
+      <h1 className="text-4xl font-extrabold mb-10 text-center text-blue-700 drop-shadow">Video Feed</h1>
+      <div className="flex gap-4 items-center flex-col sm:flex-row w-full justify-between mb-8 max-w-4xl mx-auto">
+        <a
+          className="rounded-full border border-blue-500 transition-colors flex items-center justify-center bg-blue-600 text-white gap-2 hover:bg-blue-700 font-semibold text-base h-12 px-6 shadow-lg"
+          href="/upload"
+        >
+          Upload Video
+        </a>
+      </div>
+      {loading ? (
+        <div className="text-center text-lg text-gray-600">Loading videos...</div>
+      ) : videos.length === 0 ? (
+        <div className="text-center text-gray-600">No videos uploaded yet. Be the first to <Link href="/upload" className="text-blue-600 underline">upload a video</Link>!</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-10 max-w-6xl mx-auto">
+          {videos.filter(v => v._id).map((video) => (
+            <div
+              key={video._id!.toString()}
+              className="bg-white rounded-2xl shadow-xl overflow-hidden hover:shadow-2xl transition-shadow flex flex-col cursor-pointer group border border-gray-100 relative"
+            >
+              <div className="relative w-full h-56 bg-black">
+                <Image
+                  src={typeof video.thumbnailUrl === "string" && video.thumbnailUrl ? video.thumbnailUrl : "/fallback-thumbnail.png"}
+                  alt={video.title}
+                  width={400}
+                  height={225}
+                  unoptimized
+                  className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                />
+                <button
+                  className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={e => { e.stopPropagation(); setModalVideo(video); }}
+                  aria-label="Play video"
+                >
+                  <svg className="w-16 h-16 text-white drop-shadow-lg" fill="currentColor" viewBox="0 0 84 84"><circle cx="42" cy="42" r="42" fill="rgba(0,0,0,0.4)"/><polygon points="34,26 62,42 34,58" fill="white"/></svg>
+                </button>
+                {/* Delete button, only show if authenticated */}
+                {session && (
+                  <button
+                    className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-2 shadow hover:bg-red-700 transition z-10"
+                    onClick={e => { e.stopPropagation(); handleDelete(video._id!.toString()); }}
+                    title="Delete video"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              <div className="p-5 flex-1 flex flex-col">
+                <h2 className="font-bold text-xl mb-2 line-clamp-2 text-gray-900">{video.title}</h2>
+                <p className="text-gray-500 text-sm flex-1 line-clamp-2">{video.description}</p>
+              </div>
+            </div>
+          ))}
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      )}
+      {/* Modal Video Player */}
+      {modalVideo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setModalVideo(null)}>
+          <div className="bg-white rounded-xl shadow-2xl p-4 max-w-2xl w-full relative" onClick={e => e.stopPropagation()}>
+            <button className="absolute top-2 right-2 text-gray-600 hover:text-red-500 text-2xl font-bold" onClick={() => setModalVideo(null)}>&times;</button>
+            <video
+              src={modalVideo.videoUrl}
+              controls
+              autoPlay
+              poster={modalVideo.thumbnailUrl}
+              className="w-full h-96 object-contain bg-black rounded-lg"
+            />
+            <div className="mt-4">
+              <h2 className="font-bold text-2xl mb-2 text-gray-900">{modalVideo.title}</h2>
+              <p className="text-gray-600 text-base">{modalVideo.description}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
